@@ -2,7 +2,8 @@ package main
 
 import (
 	"log"
-	"os/exec"
+	"os"
+	"path"
 	"regexp"
 	"strings"
 
@@ -12,6 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/knipferrc/teacup/code"
+	"github.com/noelzubin/notes_search/editor"
 	"github.com/noelzubin/notes_search/search"
 	"github.com/noelzubin/notes_search/search/bleve_indexer"
 	"github.com/noelzubin/notes_search/utils"
@@ -20,55 +22,32 @@ import (
 
 var ListStyle = lipgloss.NewStyle().MarginTop(1)
 
-type Note struct {
-	path    string
-	content string
-}
-
-func (n Note) Title() string       { return n.path }
-func (n Note) Description() string { return n.content }
-func (n Note) FilterValue() string { return "" }
-
+// Main app model for bubbletea
 type Model struct {
-	width     int
-	height    int
-	notes     []Note
-	preview   *code.Bubble
-	list      list.Model
-	textInput textinput.Model
-	indexer   search.NotesIndexer
-	results   []search.SearchResult
-	editor    Editor
+	width     int                 // height of terminal
+	height    int                 // width of terminal
+	preview   *code.Bubble        // the preview widget model
+	list      list.Model          // the list widget model
+	textInput textinput.Model     // the input search widget model
+	indexer   search.NotesIndexer // the indexer for searching and indexing notes.
+	editor    editor.Editor       // for opening up external editor.
 }
 
+// Create a new model for the app
 func New(indexer search.NotesIndexer, config *utils.Config) *Model {
-	ti := textinput.New()
-	ti.Placeholder = "query"
-
-	ti.Prompt = "Search:"
-
-	ti.PromptStyle = lipgloss.NewStyle().
-		Background(lipgloss.Color("62")).
-		Foreground(lipgloss.Color("230")).
-		MarginRight(1).
-		MarginLeft(2).
-		Padding(0, 1)
-
-	ti.Focus()
-
-	mylist := list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0)
-	mylist.SetShowFilter(false)
-	mylist.SetShowHelp(false)
-	mylist.SetShowTitle(false)
-	mylist.Styles.NoItems = mylist.Styles.NoItems.Copy().PaddingLeft(2)
-
-	return &Model{list: mylist, textInput: ti, indexer: indexer, editor: Editor{editMode: false, app: config.Editor}}
+	return &Model{
+		list:      create_list_model(),
+		textInput: create_text_input(),
+		indexer:   indexer,
+		editor:    editor.Editor{Editing: false, EditorCmd: config.Editor},
+	}
 }
 
 func (m *Model) setListSize() {
 	width := m.width
 	height := m.height
 
+	// If preview is open take half width
 	if m.preview != nil {
 		width = m.width / 2
 	}
@@ -107,6 +86,7 @@ func formatContent(content string) string {
 	return string(re.ReplaceAll([]byte(s), []byte(" ")))
 }
 
+// The update fn for the bubbletea model
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
@@ -118,6 +98,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return Note{hit.Path, content}
 		}))
 	case tea.KeyMsg:
+		// Keybindings:
+		// Tab - move down in the list
+		// Shift+Tab - move up in the list
+		// Enter - toggle preview for the selected note
+		// Esc - close preview
+		// Ctrl+R - refresh the index
+		// Ctrl+K - Preview lineup
+		// Ctrl+J - Preview line down
+		// Ctrl+O - Open the file in the editor
+		// Ctrl+C - quit the application
 		switch msg.String() {
 		case "tab":
 			m.list.CursorDown()
@@ -127,14 +117,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.list.SelectedItem() != nil {
 				path := m.list.SelectedItem().(Note).path
 				codeModel := code.New(false, true, lipgloss.AdaptiveColor{Light: "#000000", Dark: "#ffffff"})
-				cmds = append(cmds, codeModel.SetFileName(path))
 				codeModel.SetSize(m.width/1, m.height)
+				cmds = append(cmds, codeModel.SetFileName(path))
 				m.preview = &codeModel
 			}
 		case "esc":
 			m.preview = nil
 		case "ctrl+c":
-			return m, tea.Batch(tea.ExitAltScreen, tea.Quit)
+			return m, tea.Quit
 		case "ctrl+r":
 			return m, func() tea.Msg {
 				m.indexer.IndexNotes()
@@ -158,13 +148,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateSize(msg.Width, msg.Height)
 	}
 
-	// m.setTableSize()
+	// Update the widgets sizes
 	m.setListSize()
 	m.setPreviewSize()
 
-	// check if input changed.
+	// save to commpare if changed
 	oldValue := m.textInput.Value()
 
+	// pass on message to the other components
 	m.textInput, cmd = m.textInput.Update(msg)
 	cmds = append(cmds, cmd)
 
@@ -178,8 +169,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.preview = &newPreview
 	}
 
+	// If input has changed, search for the new value
 	newValue := m.textInput.Value()
 	if oldValue != newValue {
+		// This returns a funciton that returns a message(ResultMsg) eventually
 		return m, func() tea.Msg {
 			results := m.indexer.Search(newValue)
 			return ResultMsg{results}
@@ -189,39 +182,46 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
+// This is emitted when new events are fetchenew events are fetched
 type ResultMsg struct {
 	search.SearchResult
 }
 
+// View fn for bubbletea model
 func (m Model) View() string {
 	listContent := ListStyle.Render(m.list.View())
+
+	// render list
 	innerContent := listContent
 
 	// if preview then preview takes up half the width
 	if m.preview != nil {
 		innerContent = lipgloss.JoinHorizontal(lipgloss.Left,
-			listContent,
-			m.preview.View(),
+			listContent,      // render list
+			m.preview.View(), // render preview.
 		)
 	}
 
 	// render the input box and the content
-	return lipgloss.JoinVertical(lipgloss.Left, m.textInput.View(),
-		innerContent,
+	return lipgloss.JoinVertical(
+		lipgloss.Left,
+		m.textInput.View(), // render the text input
+		innerContent,       // render the main content
 	)
 }
 
 func main() {
 	// Setup logging.
-	f, err := tea.LogToFile("debug.log", "debug")
-
+	homedir, _ := os.UserHomeDir()
+	log_path := path.Join(homedir, "/.config/notes_search/debug.log")
+	f, err := tea.LogToFile(log_path, "debug")
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	defer f.Close()
 
-	// get a config
+	// read application config
 	config := utils.NewConfig()
 
 	// create the indexer.
@@ -230,56 +230,45 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Create a new Model
+	// Create a new bubbletea Model
 	m := New(indexer, config)
 	p := tea.NewProgram(m)
-	if err := p.Start(); err != nil {
+	if _, err := p.Run(); err != nil {
 		panic(err)
 	}
 }
 
-// / EIDTOR
-type Editor struct {
-	editMode bool
-	app      string
+// Note implements list.Item interface
+type Note struct {
+	path    string
+	content string
 }
 
-type editingFinished struct{}
+func (n Note) Title() string       { return n.path }
+func (n Note) Description() string { return n.content }
+func (n Note) FilterValue() string { return "" }
 
-type startEditing struct {
-	filepath string
+// Create the list model
+func create_list_model() list.Model {
+	l := list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0)
+	l.SetShowFilter(false)
+	l.SetShowHelp(false)
+	l.SetShowTitle(false)
+	l.Styles.NoItems = l.Styles.NoItems.Copy().PaddingLeft(2)
+	return l
 }
 
-func openEditor(app string, args ...string) tea.Cmd {
-	return tea.ExecProcess(exec.Command(app, args...), func(err error) tea.Msg {
-		return editingFinished{}
-	})
-}
-
-func (m *Editor) Init() tea.Cmd {
-	return nil
-}
-
-func (m *Editor) EditFile(filepath string) tea.Cmd {
-	m.editMode = true
-	tea.HideCursor()
-	return openEditor(m.app, filepath)
-}
-
-func (m Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
-	if m.editMode {
-		return m, nil
-	}
-
-	switch msg.(type) {
-	case editingFinished:
-		m.editMode = false
-		return m, nil
-	}
-
-	return m, nil
-}
-
-func (m Editor) View() string {
-	return ""
+// Create the text input model
+func create_text_input() textinput.Model {
+	ti := textinput.New()
+	ti.Placeholder = "query"
+	ti.Prompt = "Search:"
+	ti.PromptStyle = lipgloss.NewStyle().
+		Background(lipgloss.Color("62")).
+		Foreground(lipgloss.Color("230")).
+		MarginRight(1).
+		MarginLeft(2).
+		Padding(0, 1)
+	ti.Focus()
+	return ti
 }

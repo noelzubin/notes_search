@@ -12,7 +12,7 @@ import (
 type Config struct {
 	RootPath   string   `mapstructure:"root_path"`  // Root path of the notes.
 	Editor     string   `mapstructure:"editor"`     // Editor to open the notes with
-	Extensions []string `mapstructure:"extensions"` // Extensions of ntoes to    notes
+	Extensions []string `mapstructure:"extensions"` // Extensions of notes to be indexed
 }
 
 // NewConfig returns a new Config object by reading from the config file
@@ -21,7 +21,7 @@ func NewConfig() *Config {
 	configPath := path.Join(homedir, "/.config/notes_search/config.yaml")
 	viper.SetConfigFile(configPath)
 
-	viper.SetDefault("extensions", []string{".md", ".rs"})
+	viper.SetDefault("extensions", []string{".md"})
 
 	if err := viper.ReadInConfig(); err != nil {
 		log.Fatal("failed to read config file", err)
