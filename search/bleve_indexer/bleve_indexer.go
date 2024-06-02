@@ -27,6 +27,7 @@ type bleveIndexer struct {
 	notesRoot  string
 	extensions []string
 	index      bleve.Index
+	indexPath  string
 }
 
 // returns where index and metadata will be stored on disk.
@@ -51,12 +52,21 @@ func NewBleveIndexer(config *utils.Config) (bleveIndexer, error) {
 		return bleveIndexer{}, err
 	}
 
-	index, err := GetIndex(getIndexPath())
+	index_path := getIndexPath()
+	index, err := GetIndex(index_path)
 	if err != nil {
 		return bleveIndexer{}, err
 	}
 
-	return bleveIndexer{config.RootPath, config.Extensions, index}, nil
+	return bleveIndexer{config.RootPath, config.Extensions, index, index_path}, nil
+}
+
+func (s *bleveIndexer) OpenIndex() {
+	s.index, _ = GetIndex(s.indexPath)
+}
+
+func (s *bleveIndexer) CloseIndex() {
+	s.index.Close()
 }
 
 // Reindex all the notes.
@@ -64,7 +74,7 @@ func NewBleveIndexer(config *utils.Config) (bleveIndexer, error) {
 // It compares all the file in the rootPath with the ones in the metadata file.
 // If the file is new or modified, it is indexed. If the file is deleted,
 // it is removed from the index.
-func (s bleveIndexer) IndexNotes() {
+func (s *bleveIndexer) IndexNotes() {
 	old, err := readFileInfos(getFileInfosPath())
 	if err == fs.ErrNotExist {
 		old = make([]FileInfo, 0)
@@ -106,7 +116,7 @@ func (s bleveIndexer) IndexNotes() {
 
 // Search searches the index for the given query.
 // If the length of the query is less than 3, it returns all the notes.
-func (s bleveIndexer) Search(qry string) search.SearchResult {
+func (s *bleveIndexer) Search(qry string) search.SearchResult {
 	query := strings.Trim(qry, " ")
 
 	queryLen := len(query)

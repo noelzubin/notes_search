@@ -12,12 +12,12 @@ type Editor struct {
 }
 
 // Msg for when editor is closed.
-type editingFinished struct{}
+type EditingFinished struct{}
 
 // this opens up an external editor.
 func openEditor(app string, args ...string) tea.Cmd {
 	return tea.ExecProcess(exec.Command(app, args...), func(err error) tea.Msg {
-		return editingFinished{}
+		return EditingFinished{}
 	})
 }
 
@@ -36,7 +36,7 @@ func (m Editor) Update(msg tea.Msg) (Editor, tea.Cmd) {
 	}
 
 	switch msg.(type) {
-	case editingFinished:
+	case EditingFinished:
 		m.Editing = false
 		return m, nil
 	}

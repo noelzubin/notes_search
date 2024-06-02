@@ -13,4 +13,6 @@ type SearchResult struct {
 type NotesIndexer interface {
 	IndexNotes()                      // Index all the notes.
 	Search(query string) SearchResult // Search the index for the given query.
+	OpenIndex()                       // Search the index for the given query.
+	CloseIndex()                      // Search the index for the given query.
 }

@@ -137,13 +137,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+o":
 			if m.list.SelectedItem() != nil {
 				path := m.list.SelectedItem().(Note).path
+				m.indexer.CloseIndex()
 				cmd = m.editor.EditFile(path)
 				cmds = append(cmds, cmd)
 			}
 		default:
 			log.Print(msg.String())
 		}
-
+	case editor.EditingFinished:
+		m.indexer.OpenIndex()
 	case tea.WindowSizeMsg:
 		m.updateSize(msg.Width, msg.Height)
 	}
@@ -231,7 +233,7 @@ func main() {
 	}
 
 	// Create a new bubbletea Model
-	m := New(indexer, config)
+	m := New(&indexer, config)
 	p := tea.NewProgram(m)
 	if _, err := p.Run(); err != nil {
 		panic(err)
