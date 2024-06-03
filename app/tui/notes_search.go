@@ -247,7 +247,7 @@ type Note struct {
 }
 
 func (n Note) Title() string       { return n.path }
-func (n Note) Description() string { return n.content }
+func (n Note) Description() string { return format_string(n.content) }
 func (n Note) FilterValue() string { return "" }
 
 // Create the list model
@@ -273,4 +273,38 @@ func create_text_input() textinput.Model {
 		Padding(0, 1)
 	ti.Focus()
 	return ti
+}
+
+// format the string returned by bleve with simple highligting
+// example: "This is a <mark>test</mark> string" -> "This is a test string" with
+// test in pink.
+func format_string(input string) string {
+	re := regexp.MustCompile(`<mark>(.*?)</mark>`)
+
+	matches := re.FindAllStringSubmatchIndex(input, -1)
+
+	var result []string
+	prevIndex := 0
+
+	pinkText := lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+	grayText := lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
+
+	for _, match := range matches {
+		// Append the text before the match
+		if match[0] > prevIndex {
+			result = append(result, grayText.Render(input[prevIndex:match[0]]))
+		}
+
+		// Append the matched text
+		result = append(result, pinkText.Render(input[match[0]+6:match[1]-7]))
+
+		// Update the previous index to the end of the match
+		prevIndex = match[1]
+	}
+
+	if prevIndex < len(input) {
+		result = append(result, grayText.Render(input[prevIndex:]))
+	}
+
+	return strings.Join(result, "")
 }

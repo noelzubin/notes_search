@@ -125,7 +125,7 @@ func (s *bleveIndexer) Search(qry string) search.SearchResult {
 	}
 	bleveQuery := bleve.NewQueryStringQuery(query)
 	searchRequest := bleve.NewSearchRequest(bleveQuery)
-	searchRequest.Highlight = bleve.NewHighlightWithStyle("ansi")
+	searchRequest.Highlight = bleve.NewHighlight()
 
 	if len(query) < 3 {
 		searchRequest = bleve.NewSearchRequest(bleve.NewMatchAllQuery())
