@@ -6,6 +6,7 @@ type DocumentMatch struct {
 }
 
 type SearchResult struct {
+	Err  error
 	Hits []DocumentMatch
 }
 

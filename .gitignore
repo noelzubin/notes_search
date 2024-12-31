@@ -4,3 +4,4 @@ temp.html
 .env
 debug.log
 .DS_Store
+.vscode

@@ -24,13 +24,14 @@ var ListStyle = lipgloss.NewStyle().MarginTop(1)
 
 // Main app model for bubbletea
 type Model struct {
-	width     int                 // height of terminal
-	height    int                 // width of terminal
-	preview   *code.Bubble        // the preview widget model
-	list      list.Model          // the list widget model
-	textInput textinput.Model     // the input search widget model
-	indexer   search.NotesIndexer // the indexer for searching and indexing notes.
-	editor    editor.Editor       // for opening up external editor.
+	width        int                 // height of terminal
+	height       int                 // width of terminal
+	preview      *code.Bubble        // the preview widget model
+	list         list.Model          // the list widget model
+	textInput    textinput.Model     // the input search widget model
+	indexer      search.NotesIndexer // the indexer for searching and indexing notes.
+	editor       editor.Editor       // for opening up external editor.
+	isQueryValid bool                // if the query is valid
 }
 
 // Create a new model for the app
@@ -93,6 +94,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case ResultMsg:
+		text_style := lipgloss.Color("255")
+		if msg.Err != nil {
+			text_style = lipgloss.Color("9")
+		}
+
+		m.textInput.TextStyle = lipgloss.NewStyle().Foreground(text_style)
 		m.list.SetItems(lo.Map(msg.Hits, func(hit search.DocumentMatch, _ int) list.Item {
 			content := formatContent(hit.Content)
 			return Note{hit.Path, content}

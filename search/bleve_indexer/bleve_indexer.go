@@ -8,7 +8,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -116,9 +115,7 @@ func (s *bleveIndexer) IndexNotes() {
 
 // Search searches the index for the given query.
 // If the length of the query is less than 3, it returns all the notes.
-func (s *bleveIndexer) Search(qry string) search.SearchResult {
-	query := strings.Trim(qry, " ")
-
+func (s *bleveIndexer) Search(query string) search.SearchResult {
 	queryLen := len(query)
 	if queryLen > 0 && query[queryLen-1] != ' ' {
 		query = query + "*"
@@ -134,8 +131,12 @@ func (s *bleveIndexer) Search(qry string) search.SearchResult {
 
 	searchRequest.Size = 100
 	searchResult, err := s.index.Search(searchRequest)
+
 	if err != nil {
-		log.Fatal(err)
+		return search.SearchResult{
+			Hits: []search.DocumentMatch{},
+			Err:  err,
+		}
 	}
 
 	var getFragment = func(hit *bleveSearch.DocumentMatch) string {
@@ -154,6 +155,7 @@ func (s *bleveIndexer) Search(qry string) search.SearchResult {
 				Content: getFragment(hit),
 			}
 		}),
+		Err: nil,
 	}
 
 	return result
