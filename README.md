@@ -15,6 +15,5 @@ extensions:
   - .rs
 ```
 
-# TODO 
-[ ] add highlight  matches
-
+# Screenshot
+![](https://github.com/user-attachments/assets/4fecf683-ea09-41fb-8c65-8564dd86e1e8)
