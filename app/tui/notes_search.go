@@ -32,15 +32,18 @@ type Model struct {
 	indexer      search.NotesIndexer // the indexer for searching and indexing notes.
 	editor       editor.Editor       // for opening up external editor.
 	isQueryValid bool                // if the query is valid
+	queryId      int                 // Unique id for the query.
 }
 
 // Create a new model for the app
 func New(indexer search.NotesIndexer, config *utils.Config) *Model {
 	return &Model{
-		list:      create_list_model(),
-		textInput: create_text_input(),
-		indexer:   indexer,
-		editor:    editor.Editor{Editing: false, EditorCmd: config.Editor},
+		list:         create_list_model(),
+		textInput:    create_text_input(),
+		indexer:      indexer,
+		editor:       editor.Editor{Editing: false, EditorCmd: config.Editor},
+		isQueryValid: false,
+		queryId:      0,
 	}
 }
 
@@ -73,7 +76,7 @@ func (m Model) Init() tea.Cmd {
 	return tea.Batch(tea.EnterAltScreen,
 		func() tea.Msg {
 			results := m.indexer.Search("")
-			return ResultMsg{results}
+			return ResultMsg{results: results, queryId: 0}
 		},
 	)
 }
@@ -94,13 +97,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case ResultMsg:
+		// Ignore this slow result
+		if m.queryId != msg.queryId {
+			return m, nil
+		}
+
 		text_style := lipgloss.Color("255")
-		if msg.Err != nil {
+		if msg.results.Err != nil {
 			text_style = lipgloss.Color("9")
 		}
 
 		m.textInput.TextStyle = lipgloss.NewStyle().Foreground(text_style)
-		m.list.SetItems(lo.Map(msg.Hits, func(hit search.DocumentMatch, _ int) list.Item {
+		m.list.SetItems(lo.Map(msg.results.Hits, func(hit search.DocumentMatch, _ int) list.Item {
 			content := formatContent(hit.Content)
 			return Note{hit.Path, content}
 		}))
@@ -182,9 +190,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	newValue := m.textInput.Value()
 	if oldValue != newValue {
 		// This returns a funciton that returns a message(ResultMsg) eventually
+		m.queryId++
 		return m, func() tea.Msg {
 			results := m.indexer.Search(newValue)
-			return ResultMsg{results}
+			return ResultMsg{results: results, queryId: m.queryId}
 		}
 	}
 
@@ -193,7 +202,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // This is emitted when new events are fetchenew events are fetched
 type ResultMsg struct {
-	search.SearchResult
+	results search.SearchResult
+	queryId int
 }
 
 // View fn for bubbletea model
